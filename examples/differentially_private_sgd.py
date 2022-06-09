@@ -66,12 +66,14 @@ import warnings
 
 from absl import app
 from absl import flags
+
+from differential_privacy.python.accounting import dp_event
+from differential_privacy.python.accounting.rdp import rdp_privacy_accountant
+
 import jax
 from jax.example_libraries import stax
 import jax.numpy as jnp
 import optax
-from tensorflow_privacy.privacy.analysis.rdp_accountant import compute_rdp
-from tensorflow_privacy.privacy.analysis.rdp_accountant import get_privacy_spent
 
 # pylint: disable=g-bad-import-order
 import datasets  # Located in the examples folder.
@@ -112,9 +114,10 @@ def compute_epsilon(steps, target_delta=1e-5):
     warnings.warn('Your delta might be too high.')
   q = FLAGS.batch_size / float(NUM_EXAMPLES)
   orders = list(jnp.linspace(1.1, 10.9, 99)) + list(range(11, 64))
-  rdp_const = compute_rdp(q, FLAGS.noise_multiplier, steps, orders)
-  eps, _, _ = get_privacy_spent(orders, rdp_const, target_delta=target_delta)
-  return eps
+  accountant = rdp_privacy_accountant.RdpAccountant(orders)
+  accountant.compose(dp_event.PoissonSampledDpEvent(
+      q, dp_event.GaussianDpEvent(FLAGS.noise_multiplier)), steps)
+  return accountant.get_epsilon(target_delta)
 
 
 def loss_fn(params, batch):
